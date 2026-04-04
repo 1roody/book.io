@@ -1,0 +1,17 @@
+name: Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-application:
+    name: Build Application
+    uses: ./.github/workflows/build.yml
+    with:
+      push-image: true
