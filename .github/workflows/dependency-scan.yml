@@ -2,12 +2,24 @@ name: Dependency Scan
 
 on:
   workflow_call:
+    inputs:
+      changed_only:
+        required: false
+        type: boolean
+        default: false
+      base_sha:
+        required: false
+        type: string
+        default: ''
+      head_sha:
+        required: false
+        type: string
+        default: ''
 
 jobs:
   dependency_scan:
     name: SCA - Trivy
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       contents: read
       security-events: write
@@ -16,16 +28,68 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Run Trivy filesystem scan (SCA)
-        uses: aquasecurity/trivy-action@master
         with:
-          scan-type: fs
-          scan-ref: .
-          format: sarif
-          output: trivy-fs-results.sarif
-          exit-code: '0'
-          severity: CRITICAL,HIGH,MEDIUM
+          fetch-depth: 0
+
+      - name: Resolve dependency scan targets
+        id: targets
+        shell: bash
+        run: |
+          if [ "${{ inputs.changed_only }}" != "true" ] || [ "${{ inputs.base_sha }}" = "0000000000000000000000000000000000000000" ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "targets=." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          mapfile -t changed_files < <(
+            git diff --name-only --diff-filter=ACMR "${{ inputs.base_sha }}" "${{ inputs.head_sha }}" \
+              | grep -E '(^|/)(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements.*\.txt|poetry\.lock|Pipfile(\.lock)?|pom\.xml|build\.gradle(\.kts)?|go\.(mod|sum)|Cargo\.(toml|lock))$' \
+              || true
+          )
+
+          if [ "${#changed_files[@]}" -eq 0 ]; then
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "mode=changed"
+            echo "targets<<EOF"
+            printf '%s\n' "${changed_files[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run Trivy filesystem scan
+        if: steps.targets.outputs.mode != 'skip'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ steps.targets.outputs.mode }}" = "full" ]; then
+            mapfile -t targets < <(printf '.\n')
+          else
+            mapfile -t targets < <(printf '%s\n' "${{ steps.targets.outputs.targets }}")
+          fi
+
+          docker run --rm \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            aquasec/trivy:0.69.3 \
+            fs \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --format sarif \
+            --output trivy-fs-results.sarif \
+            "${targets[@]}"
+
+          docker run --rm \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            aquasec/trivy:0.69.3 \
+            fs \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --format json \
+            --output trivy-fs-results.json \
+            "${targets[@]}"
 
       - name: Upload Trivy FS SARIF
         uses: github/codeql-action/upload-sarif@v4
@@ -34,11 +98,13 @@ jobs:
           sarif_file: trivy-fs-results.sarif
           category: trivy-fs
 
-      - name: Upload Trivy FS report
+      - name: Upload Trivy FS reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: sca-trivy-fs
-          path: trivy-fs-results.sarif
+          path: |
+            trivy-fs-results.sarif
+            trivy-fs-results.json
           retention-days: 30
           if-no-files-found: ignore
