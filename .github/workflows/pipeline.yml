@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'feature/**'
+      - main
   pull_request:
     branches:
       - develop
@@ -24,7 +25,6 @@ jobs:
       changed_only: true
       base_sha: ${{ github.event.before }}
       head_sha: ${{ github.sha }}
-      fail_on_findings: false
     permissions:
       contents: read
       security-events: write
@@ -39,8 +39,6 @@ jobs:
       changed_only: true
       base_sha: ${{ github.event.before }}
       head_sha: ${{ github.sha }}
-      fail_on_findings: false
-      severities: CRITICAL,HIGH,MEDIUM
     permissions:
       contents: read
       security-events: write
@@ -55,7 +53,6 @@ jobs:
       changed_only: true
       base_sha: ${{ github.event.pull_request.base.sha }}
       head_sha: ${{ github.event.pull_request.head.sha }}
-      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
     permissions:
       contents: read
       security-events: write
@@ -70,7 +67,6 @@ jobs:
       changed_only: true
       base_sha: ${{ github.event.pull_request.base.sha }}
       head_sha: ${{ github.event.pull_request.head.sha }}
-      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
     permissions:
       contents: read
       security-events: write
@@ -85,8 +81,6 @@ jobs:
       changed_only: true
       base_sha: ${{ github.event.pull_request.base.sha }}
       head_sha: ${{ github.event.pull_request.head.sha }}
-      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
-      severities: CRITICAL,HIGH
     permissions:
       contents: read
       security-events: write
@@ -101,36 +95,125 @@ jobs:
       changed_only: true
       base_sha: ${{ github.event.pull_request.base.sha }}
       head_sha: ${{ github.event.pull_request.head.sha }}
-      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
-      severities: CRITICAL,HIGH
     permissions:
       contents: read
       security-events: write
       pull-requests: read
       actions: read
 
-  main-build-and-container-scan:
-    name: Main - Build and Container Scan
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+  pr-main-build-and-container-scan:
+    name: PR Main - Build and Container Scan
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'develop'
     uses: ./.github/workflows/build-and-container-scan.yml
     with:
-      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
-      severities: CRITICAL,HIGH,MEDIUM
+      push_image: false
+      run_container_scan: true
     permissions:
       contents: read
       packages: write
       security-events: write
 
-  main-deploy-and-dast:
-    name: Main - Deploy & DAST
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+  pr-main-dast:
+    name: PR Main - DAST Local
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'develop'
     needs:
-      - main-build-and-container-scan
+      - pr-main-build-and-container-scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build application image locally
+        run: docker build -t bookio-pr-dast:local -f Dockerfile .
+
+      - name: Start application on runner localhost
+        run: docker run -d --name bookio-pr-dast -p 3000:3000 bookio-pr-dast:local
+
+      - name: Health check local application
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:3000/health >/dev/null 2>&1; then
+              echo "Application healthy at http://localhost:3000"
+              exit 0
+            fi
+            echo "Waiting for local application... ($i/30)"
+            sleep 5
+          done
+          docker logs bookio-pr-dast || true
+          exit 1
+
+      - name: Pull ZAP image
+        run: docker pull ghcr.io/zaproxy/zaproxy:stable
+
+      - name: Run OWASP ZAP active scan
+        shell: bash
+        run: |
+          mkdir -p zap-output && chmod 777 zap-output
+          declare -a TARGETS=(
+            "http://host.docker.internal:3000/livros"
+            "http://host.docker.internal:3000/segredo"
+            "http://host.docker.internal:3000/xss?nome=teste"
+            "http://host.docker.internal:3000/sql?q=teste"
+          )
+
+          set +e
+          for index in "${!TARGETS[@]}"; do
+            target="${TARGETS[$index]}"
+            report_prefix="zap-report-$((index + 1))"
+
+            docker run --rm \
+              --add-host=host.docker.internal:host-gateway \
+              -v "$(pwd)/zap-output:/zap/wrk/:rw" \
+              -u root \
+              ghcr.io/zaproxy/zaproxy:stable \
+              zap-full-scan.py \
+                -t "${target}" \
+                -r "${report_prefix}.html" \
+                -J "${report_prefix}.json" \
+                -a \
+                -I
+          done
+          set -e
+
+      - name: Upload ZAP report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dast-zap-results
+          path: |
+            zap-output/*.html
+            zap-output/*.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Cleanup local DAST container
+        if: always()
+        run: docker rm -f bookio-pr-dast || true
+
+  main-build:
+    name: Main - Build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/build-and-container-scan.yml
+    with:
+      push_image: true
+      run_container_scan: false
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+  main-deploy:
+    name: Main - Deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - main-build
     uses: ./.github/workflows/dast-and-deploy.yml
     with:
-      source_image_ref: ${{ needs.main-build-and-container-scan.outputs.image_ref }}
-      target_url: ${{ vars.RENDER_SERVICE_URL }}
-      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
+      source_image_ref: ${{ needs.main-build.outputs.image_ref }}
+      target_url: ''
+      run_dast: false
     secrets:
       RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
     permissions:

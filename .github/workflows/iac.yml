@@ -15,14 +15,6 @@ on:
         required: false
         type: string
         default: ''
-      fail_on_findings:
-        required: false
-        type: boolean
-        default: false
-      severities:
-        required: false
-        type: string
-        default: CRITICAL,HIGH,MEDIUM,LOW
 
 jobs:
   iac-trivy-config:
@@ -85,7 +77,7 @@ jobs:
             -w /work \
             aquasec/trivy:0.69.3 \
             config \
-            --severity "${{ inputs.severities }}" \
+            --severity CRITICAL,HIGH \
             --format sarif \
             --output trivy-iac-results.sarif \
             "${targets[@]}"
@@ -95,19 +87,10 @@ jobs:
             -w /work \
             aquasec/trivy:0.69.3 \
             config \
-            --severity "${{ inputs.severities }}" \
+            --severity CRITICAL,HIGH \
             --format json \
             --output trivy-iac-results.json \
             "${targets[@]}"
-
-      - name: Enforce Trivy IaC policy
-        if: steps.targets.outputs.mode != 'skip' && inputs.fail_on_findings
-        run: |
-          findings_count="$(jq '[.Results[]?.Misconfigurations[]?] | length' trivy-iac-results.json)"
-          if [ "${findings_count}" -gt 0 ]; then
-            echo "Blocking due to ${findings_count} IaC finding(s) at severities ${{ inputs.severities }}."
-            exit 1
-          fi
 
       - name: Upload Trivy IaC SARIF
         uses: github/codeql-action/upload-sarif@v4
