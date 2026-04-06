@@ -3,74 +3,134 @@ name: Pipeline
 on:
   push:
     branches:
+      - 'feature/**'
+  pull_request:
+    branches:
+      - develop
       - main
-  workflow_dispatch:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
 
 jobs:
-  build-and-container-scan:
-    name: Build and Container Scan
+  feature-secret-scan:
+    name: Feature - Secret Scan
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature/')
+    uses: ./.github/workflows/secret-scan.yml
+    with:
+      changed_only: true
+      base_sha: ${{ github.event.before }}
+      head_sha: ${{ github.sha }}
+      fail_on_findings: false
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  feature-dependency-scan:
+    name: Feature - Dependency Scan
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature/')
+    uses: ./.github/workflows/dependency-scan.yml
+    with:
+      changed_only: true
+      base_sha: ${{ github.event.before }}
+      head_sha: ${{ github.sha }}
+      fail_on_findings: false
+      severities: CRITICAL,HIGH,MEDIUM
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  develop-sast:
+    name: Develop - SAST
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    uses: ./.github/workflows/sast.yml
+    with:
+      changed_only: true
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  develop-secret-scan:
+    name: Develop - Secret Scan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    uses: ./.github/workflows/secret-scan.yml
+    with:
+      changed_only: true
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  develop-dependency-scan:
+    name: Develop - Dependency Scan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    uses: ./.github/workflows/dependency-scan.yml
+    with:
+      changed_only: true
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
+      severities: CRITICAL,HIGH
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  develop-iac:
+    name: Develop - IaC Security Scan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    uses: ./.github/workflows/iac.yml
+    with:
+      changed_only: true
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
+      severities: CRITICAL,HIGH
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  main-build-and-container-scan:
+    name: Main - Build and Container Scan
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     uses: ./.github/workflows/build-and-container-scan.yml
+    with:
+      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
+      severities: CRITICAL,HIGH,MEDIUM
     permissions:
       contents: read
       packages: write
       security-events: write
 
-  sast:
-    name: SAST
-    uses: ./.github/workflows/sast.yml
+  main-deploy-and-dast:
+    name: Main - Deploy & DAST
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs:
-      - build-and-container-scan
-    permissions:
-      contents: read
-      security-events: write
-      pull-requests: read
-      actions: read
-
-  secret-scan:
-    name: Secret Scan
-    uses: ./.github/workflows/secret-scan.yml
-    needs:
-      - build-and-container-scan
-    permissions:
-      contents: read
-      security-events: write
-      pull-requests: read
-      actions: read
-
-  dependency-scan:
-    name: Dependency Scan
-    uses: ./.github/workflows/dependency-scan.yml
-    needs:
-      - build-and-container-scan
-    permissions:
-      contents: read
-      security-events: write
-      pull-requests: read
-      actions: read
-
-  iac:
-    name: IaC Security Scan
-    uses: ./.github/workflows/iac.yml
-    needs:
-      - build-and-container-scan
-    permissions:
-      contents: read
-      security-events: write
-      pull-requests: read
-      actions: read
-
-  deploy-and-dast:
-    name: Deploy & DAST
-    needs:
-      - build-and-container-scan
-      - sast
-      - secret-scan
-      - dependency-scan
-      - iac
+      - main-build-and-container-scan
     uses: ./.github/workflows/dast-and-deploy.yml
     with:
-      source_image_ref: ${{ needs.build-and-container-scan.outputs.image_ref }}
+      source_image_ref: ${{ needs.main-build-and-container-scan.outputs.image_ref }}
       target_url: ${{ vars.RENDER_SERVICE_URL }}
+      fail_on_findings: ${{ !contains(join(github.event.pull_request.labels.*.name, ','), 'security-bypass') }}
     secrets:
       RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
     permissions:
