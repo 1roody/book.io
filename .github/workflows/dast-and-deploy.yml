@@ -92,6 +92,7 @@ jobs:
       - name: Run OWASP ZAP baseline scan
         run: |
           APP_URL="${TARGET_URL%/}"
+          SCAN_URL="${APP_URL}/livros"
           mkdir -p zap-output && chmod 777 zap-output
 
           docker run --rm \
@@ -99,7 +100,7 @@ jobs:
             -u root \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
-              -t "${APP_URL}" \
+              -t "${SCAN_URL}" \
               -r zap-report.html \
               -J zap-report.json \
               -a \
