@@ -1,0 +1,45 @@
+name: IaC Security Scan
+
+on:
+  workflow_call:
+
+jobs:
+  iac-trivy-config:
+    name: IaC - Trivy Config Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy config scan on demo IaC
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: config
+          scan-ref: ./iac-demo
+          format: sarif
+          output: trivy-iac-results.sarif
+          exit-code: '0'
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+
+      - name: Upload Trivy IaC SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('trivy-iac-results.sarif') != ''
+        with:
+          sarif_file: trivy-iac-results.sarif
+          category: trivy-iac
+
+      - name: Upload Trivy IaC report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iac-trivy-config
+          path: trivy-iac-results.sarif
+          retention-days: 30
+          if-no-files-found: ignore

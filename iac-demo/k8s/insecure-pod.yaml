@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: insecure-demo-pod
+  namespace: default
+  labels:
+    app: insecure-demo
+    purpose: scanner-lab
+spec:
+  hostNetwork: true
+  automountServiceAccountToken: true
+  containers:
+    - name: api
+      image: nginx:latest
+      ports:
+        - containerPort: 80
+      env:
+        - name: AWS_SECRET_ACCESS_KEY
+          value: demo-hardcoded-secret-for-scanner
+      securityContext:
+        privileged: true
+        allowPrivilegeEscalation: true
+        readOnlyRootFilesystem: false
+        runAsNonRoot: false
+        runAsUser: 0
