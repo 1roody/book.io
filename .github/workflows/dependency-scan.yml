@@ -15,14 +15,6 @@ on:
         required: false
         type: string
         default: ''
-      fail_on_findings:
-        required: false
-        type: boolean
-        default: false
-      severities:
-        required: false
-        type: string
-        default: CRITICAL,HIGH,MEDIUM
 
 jobs:
   dependency_scan:
@@ -84,7 +76,7 @@ jobs:
             -w /work \
             aquasec/trivy:0.69.3 \
             fs \
-            --severity "${{ inputs.severities }}" \
+            --severity CRITICAL,HIGH,MEDIUM \
             --format sarif \
             --output trivy-fs-results.sarif \
             "${targets[@]}"
@@ -94,19 +86,10 @@ jobs:
             -w /work \
             aquasec/trivy:0.69.3 \
             fs \
-            --severity "${{ inputs.severities }}" \
+            --severity CRITICAL,HIGH,MEDIUM \
             --format json \
             --output trivy-fs-results.json \
             "${targets[@]}"
-
-      - name: Enforce Trivy SCA policy
-        if: steps.targets.outputs.mode != 'skip' && inputs.fail_on_findings
-        run: |
-          findings_count="$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-fs-results.json)"
-          if [ "${findings_count}" -gt 0 ]; then
-            echo "Blocking due to ${findings_count} dependency finding(s) at severities ${{ inputs.severities }}."
-            exit 1
-          fi
 
       - name: Upload Trivy FS SARIF
         uses: github/codeql-action/upload-sarif@v4

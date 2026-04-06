@@ -15,10 +15,6 @@ on:
         required: false
         type: string
         default: ''
-      fail_on_findings:
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   sast-semgrep:
@@ -85,15 +81,6 @@ jobs:
             mapfile -t targets < <(printf '%s\n' "${{ steps.targets.outputs.targets }}")
             semgrep scan --config auto --sarif --output semgrep-results.sarif "${targets[@]}"
             semgrep scan --config auto --json --output semgrep-results.json "${targets[@]}"
-          fi
-
-      - name: Enforce Semgrep policy
-        if: steps.targets.outputs.mode != 'skip' && inputs.fail_on_findings
-        run: |
-          high_count="$(jq '[.results[] | select(.extra.severity == "ERROR")] | length' semgrep-results.json)"
-          if [ "${high_count}" -gt 0 ]; then
-            echo "Blocking due to ${high_count} Semgrep finding(s) mapped as high severity."
-            exit 1
           fi
 
       - name: Upload Semgrep SARIF

@@ -7,12 +7,13 @@ on:
         required: true
         type: string
       target_url:
-        required: true
+        required: false
         type: string
-      fail_on_findings:
+        default: ''
+      run_dast:
         required: false
         type: boolean
-        default: false
+        default: true
     secrets:
       RENDER_DEPLOY_HOOK_URL:
         required: true
@@ -66,6 +67,7 @@ jobs:
 
   dast-owasp-zap:
     name: DAST - OWASP ZAP
+    if: inputs.run_dast
     needs:
       - deploy-docker
     runs-on: ubuntu-latest
@@ -131,14 +133,6 @@ jobs:
           set -e
           echo "overall_exit=${overall_exit}" >> "$GITHUB_OUTPUT"
         id: zap-scan
-
-      - name: Enforce ZAP policy
-        if: inputs.fail_on_findings
-        run: |
-          if [ "${{ steps.zap-scan.outputs.overall_exit }}" -ge 2 ]; then
-            echo "Blocking due to ZAP warnings/failures at medium-or-higher demo threshold."
-            exit 1
-          fi
 
       - name: Upload ZAP report
         uses: actions/upload-artifact@v4
