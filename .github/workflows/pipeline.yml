@@ -7,24 +7,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-application:
-    name: Build Application
-    uses: ./.github/workflows/build.yml
+  build-and-container-scan:
+    name: Build and Container Scan
+    uses: ./.github/workflows/build-and-container-scan.yml
     permissions:
       contents: read
       packages: write
-    with:
-      push-image: true
-
-  container-scan:
-    name: Container Scan
-    needs: build-application
-    uses: ./.github/workflows/container-scan.yml
-    permissions:
-      contents: read
-      packages: read
       security-events: write
-      actions: read
-      pull-requests: read
-    with:
-      image-ref: ${{ needs.build-application.outputs.image_ref }}
