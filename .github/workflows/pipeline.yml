@@ -58,3 +58,21 @@ jobs:
       security-events: write
       pull-requests: read
       actions: read
+
+  deploy-and-dast:
+    name: Deploy & DAST
+    needs:
+      - build-and-container-scan
+      - sast
+      - secret-scan
+      - dependency-scan
+      - iac
+    uses: ./.github/workflows/dast-and-deploy.yml
+    with:
+      source_image_ref: ${{ needs.build-and-container-scan.outputs.image_ref }}
+      target_url: ${{ vars.RENDER_SERVICE_URL }}
+    secrets:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    permissions:
+      contents: read
+      packages: write
