@@ -64,9 +64,7 @@ jobs:
     if: github.event_name == 'pull_request' && github.base_ref == 'develop'
     uses: ./.github/workflows/secret-scan.yml
     with:
-      changed_only: true
-      base_sha: ${{ github.event.pull_request.base.sha }}
-      head_sha: ${{ github.event.pull_request.head.sha }}
+      changed_only: false
     permissions:
       contents: read
       security-events: write
