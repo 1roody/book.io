@@ -36,3 +36,25 @@ jobs:
       security-events: write
       pull-requests: read
       actions: read
+
+  dependency-scan:
+    name: Dependency Scan
+    uses: ./.github/workflows/dependency-scan.yml
+    needs:
+      - build-and-container-scan
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  iac:
+    name: IaC Security Scan
+    uses: ./.github/workflows/iac.yml
+    needs:
+      - build-and-container-scan
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read

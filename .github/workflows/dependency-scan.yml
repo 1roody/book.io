@@ -1,0 +1,44 @@
+name: Dependency Scan
+
+on:
+  workflow_call:
+
+jobs:
+  dependency_scan:
+    name: SCA - Trivy
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan (SCA)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs-results.sarif
+          exit-code: '0'
+          severity: CRITICAL,HIGH,MEDIUM
+
+      - name: Upload Trivy FS SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('trivy-fs-results.sarif') != ''
+        with:
+          sarif_file: trivy-fs-results.sarif
+          category: trivy-fs
+
+      - name: Upload Trivy FS report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sca-trivy-fs
+          path: trivy-fs-results.sarif
+          retention-days: 30
+          if-no-files-found: ignore
