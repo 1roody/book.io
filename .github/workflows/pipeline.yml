@@ -14,3 +14,25 @@ jobs:
       contents: read
       packages: write
       security-events: write
+
+  sast:
+    name: SAST
+    uses: ./.github/workflows/sast.yml
+    needs:
+      - build-and-container-scan
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  secret-scan:
+    name: Secret Scan
+    uses: ./.github/workflows/secret-scan.yml
+    needs:
+      - build-and-container-scan
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
