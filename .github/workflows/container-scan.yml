@@ -30,7 +30,7 @@ jobs:
         run: echo "Scanning image ${{ inputs.image-ref }}"
 
       - name: Run Trivy container scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           scan-type: image
           image-ref: ${{ inputs.image-ref }}
