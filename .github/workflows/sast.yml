@@ -2,12 +2,28 @@ name: SAST
 
 on:
   workflow_call:
+    inputs:
+      changed_only:
+        required: false
+        type: boolean
+        default: false
+      base_sha:
+        required: false
+        type: string
+        default: ''
+      head_sha:
+        required: false
+        type: string
+        default: ''
+      fail_on_findings:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   sast-semgrep:
     name: SAST - Semgrep
     runs-on: ubuntu-latest
-    continue-on-error: true
     if: github.actor != 'dependabot[bot]'
     permissions:
       contents: read
@@ -17,18 +33,68 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Semgrep
         run: python3 -m pip install --quiet semgrep
 
-      - name: Run Semgrep scan
+      - name: Resolve scan targets
+        id: targets
+        shell: bash
         run: |
-          semgrep scan \
-            --config auto \
-            --sarif \
-            --output semgrep-results.sarif \
-            --error \
-            || true
+          if [ "${{ inputs.changed_only }}" != "true" ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "${{ inputs.base_sha }}" ] || [ -z "${{ inputs.head_sha }}" ] || [ "${{ inputs.base_sha }}" = "0000000000000000000000000000000000000000" ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          mapfile -t changed_files < <(
+            git diff --name-only --diff-filter=ACMR "${{ inputs.base_sha }}" "${{ inputs.head_sha }}" \
+              | while read -r file; do
+                  [ -f "$file" ] && printf '%s\n' "$file"
+                done
+          )
+
+          if [ "${#changed_files[@]}" -eq 0 ]; then
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "mode=changed"
+            echo "targets<<EOF"
+            printf '%s\n' "${changed_files[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run Semgrep scan
+        if: steps.targets.outputs.mode != 'skip'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ steps.targets.outputs.mode }}" = "full" ]; then
+            semgrep scan --config auto --sarif --output semgrep-results.sarif
+            semgrep scan --config auto --json --output semgrep-results.json
+          else
+            mapfile -t targets < <(printf '%s\n' "${{ steps.targets.outputs.targets }}")
+            semgrep scan --config auto --sarif --output semgrep-results.sarif "${targets[@]}"
+            semgrep scan --config auto --json --output semgrep-results.json "${targets[@]}"
+          fi
+
+      - name: Enforce Semgrep policy
+        if: steps.targets.outputs.mode != 'skip' && inputs.fail_on_findings
+        run: |
+          high_count="$(jq '[.results[] | select(.extra.severity == "ERROR")] | length' semgrep-results.json)"
+          if [ "${high_count}" -gt 0 ]; then
+            echo "Blocking due to ${high_count} Semgrep finding(s) mapped as high severity."
+            exit 1
+          fi
 
       - name: Upload Semgrep SARIF
         uses: github/codeql-action/upload-sarif@v4
@@ -37,11 +103,13 @@ jobs:
           sarif_file: semgrep-results.sarif
           category: semgrep
 
-      - name: Upload Semgrep report
+      - name: Upload Semgrep reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: sast-semgrep
-          path: semgrep-results.sarif
+          path: |
+            semgrep-results.sarif
+            semgrep-results.json
           retention-days: 30
           if-no-files-found: ignore
