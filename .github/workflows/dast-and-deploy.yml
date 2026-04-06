@@ -89,22 +89,47 @@ jobs:
       - name: Pull ZAP image
         run: docker pull ghcr.io/zaproxy/zaproxy:stable
 
-      - name: Run OWASP ZAP baseline scan
+      - name: Run OWASP ZAP active scan
+        shell: bash
         run: |
           APP_URL="${TARGET_URL%/}"
-          SCAN_URL="${APP_URL}/livros"
           mkdir -p zap-output && chmod 777 zap-output
+          declare -a TARGETS=(
+            "${APP_URL}/livros"
+            "${APP_URL}/segredo"
+            "${APP_URL}/xss?nome=teste"
+            "${APP_URL}/sql?q=teste"
+          )
 
-          docker run --rm \
-            -v "$(pwd)/zap-output:/zap/wrk/:rw" \
-            -u root \
-            ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py \
-              -t "${SCAN_URL}" \
-              -r zap-report.html \
-              -J zap-report.json \
-              -a \
-              -I
+          overall_exit=0
+          set +e
+
+          for index in "${!TARGETS[@]}"; do
+            target="${TARGETS[$index]}"
+            report_prefix="zap-report-$((index + 1))"
+
+            docker run --rm \
+              -v "$(pwd)/zap-output:/zap/wrk/:rw" \
+              -u root \
+              ghcr.io/zaproxy/zaproxy:stable \
+              zap-full-scan.py \
+                -t "${target}" \
+                -r "${report_prefix}.html" \
+                -J "${report_prefix}.json" \
+                -a \
+                -I
+
+            exit_code=$?
+            if [ "${exit_code}" -gt "${overall_exit}" ]; then
+              overall_exit="${exit_code}"
+            fi
+          done
+
+          set -e
+
+          if [ "${overall_exit}" -eq 3 ]; then
+            exit 3
+          fi
 
       - name: Upload ZAP report
         uses: actions/upload-artifact@v4
@@ -112,7 +137,7 @@ jobs:
         with:
           name: dast-zap-results
           path: |
-            zap-output/zap-report.html
-            zap-output/zap-report.json
+            zap-output/*.html
+            zap-output/*.json
           retention-days: 30
           if-no-files-found: ignore
