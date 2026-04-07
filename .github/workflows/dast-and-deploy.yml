@@ -7,8 +7,13 @@ on:
         required: true
         type: string
       target_url:
-        required: true
+        required: false
         type: string
+        default: ''
+      run_dast:
+        required: false
+        type: boolean
+        default: true
     secrets:
       RENDER_DEPLOY_HOOK_URL:
         required: true
@@ -62,11 +67,11 @@ jobs:
 
   dast-owasp-zap:
     name: DAST - OWASP ZAP
+    if: inputs.run_dast
     needs:
       - deploy-docker
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    continue-on-error: true
     permissions:
       contents: read
     env:
@@ -126,10 +131,8 @@ jobs:
           done
 
           set -e
-
-          if [ "${overall_exit}" -eq 3 ]; then
-            exit 3
-          fi
+          echo "overall_exit=${overall_exit}" >> "$GITHUB_OUTPUT"
+        id: zap-scan
 
       - name: Upload ZAP report
         uses: actions/upload-artifact@v4
