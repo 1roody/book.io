@@ -51,18 +51,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Promote SHA image to latest
-        run: |
-          docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-            ${{ inputs.source_image_ref }}
-
       - name: Trigger Render deploy
         run: |
           curl --fail --silent --show-error \
             --request POST \
             --get \
-            --data-urlencode "imgURL=${{ inputs.source_image_ref }}" \
+            --data-urlencode "imgURL=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" \
             "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
 
   dast-owasp-zap:
