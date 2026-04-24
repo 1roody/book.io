@@ -68,6 +68,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      security-events: write
     env:
       TARGET_URL: ${{ inputs.target_url }}
     steps:
@@ -115,6 +116,7 @@ jobs:
                 -t "${target}" \
                 -r "${report_prefix}.html" \
                 -J "${report_prefix}.json" \
+                -x "${report_prefix}.sarif" \
                 -a \
                 -I
 
@@ -128,6 +130,13 @@ jobs:
           echo "overall_exit=${overall_exit}" >> "$GITHUB_OUTPUT"
         id: zap-scan
 
+      - name: Upload ZAP SARIF to GitHub Security Dashboard
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: zap-output/
+          category: dast-zap
+
       - name: Upload ZAP report
         uses: actions/upload-artifact@v4
         if: always()
@@ -136,5 +145,6 @@ jobs:
           path: |
             zap-output/*.html
             zap-output/*.json
+            zap-output/*.sarif
           retention-days: 30
           if-no-files-found: ignore
