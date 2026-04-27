@@ -18,7 +18,7 @@ on:
 
 jobs:
   dependency_scan:
-    name: SCA - Trivy
+    name: Trivy
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,12 +26,12 @@ jobs:
       pull-requests: read
       actions: read
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Resolve dependency scan targets
+      - name: Resolve targets
         id: targets
         shell: bash
         run: |
@@ -59,7 +59,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Run Trivy filesystem scan
+      - name: Scan
         if: steps.targets.outputs.mode != 'skip'
         shell: bash
         run: |
@@ -91,14 +91,14 @@ jobs:
             --output trivy-fs-results.json \
             "${targets[@]}"
 
-      - name: Upload Trivy FS SARIF
+      - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v4
         if: always() && hashFiles('trivy-fs-results.sarif') != ''
         with:
           sarif_file: trivy-fs-results.sarif
           category: trivy-fs
 
-      - name: Upload Trivy FS reports
+      - name: Upload results
         uses: actions/upload-artifact@v4
         if: always()
         with:
