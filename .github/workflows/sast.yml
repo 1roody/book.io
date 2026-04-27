@@ -18,7 +18,7 @@ on:
 
 jobs:
   sast-semgrep:
-    name: SAST - Semgrep
+    name: Semgrep
     runs-on: ubuntu-latest
     if: github.actor != 'dependabot[bot]'
     permissions:
@@ -27,7 +27,7 @@ jobs:
       pull-requests: read
       actions: read
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -35,7 +35,7 @@ jobs:
       - name: Install Semgrep
         run: python3 -m pip install --quiet semgrep
 
-      - name: Resolve scan targets
+      - name: Resolve targets
         id: targets
         shell: bash
         run: |
@@ -68,7 +68,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Run Semgrep scan
+      - name: Scan
         if: steps.targets.outputs.mode != 'skip'
         shell: bash
         run: |
@@ -83,14 +83,14 @@ jobs:
             semgrep scan --config auto --json --output semgrep-results.json "${targets[@]}"
           fi
 
-      - name: Upload Semgrep SARIF
+      - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v4
         if: always() && hashFiles('semgrep-results.sarif') != ''
         with:
           sarif_file: semgrep-results.sarif
           category: semgrep
 
-      - name: Upload Semgrep reports
+      - name: Upload results
         uses: actions/upload-artifact@v4
         if: always()
         with:

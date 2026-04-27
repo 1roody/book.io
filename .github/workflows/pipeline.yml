@@ -1,4 +1,4 @@
-name: Pipeline
+name: CI/CD
 
 on:
   push:
@@ -18,7 +18,7 @@ on:
 
 jobs:
   feature-secret-scan:
-    name: Feature - Secret Scan
+    name: Secret Scan
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature/')
     uses: ./.github/workflows/secret-scan.yml
     with:
@@ -32,7 +32,7 @@ jobs:
       actions: read
 
   feature-dependency-scan:
-    name: Feature - Dependency Scan
+    name: Dependency Scan
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature/')
     uses: ./.github/workflows/dependency-scan.yml
     with:
@@ -46,7 +46,7 @@ jobs:
       actions: read
 
   develop-sast:
-    name: Develop - SAST
+    name: SAST
     if: github.event_name == 'pull_request' && github.base_ref == 'develop'
     uses: ./.github/workflows/sast.yml
     with:
@@ -60,7 +60,7 @@ jobs:
       actions: read
 
   develop-secret-scan:
-    name: Develop - Secret Scan
+    name: Secret Scan
     if: github.event_name == 'pull_request' && github.base_ref == 'develop'
     uses: ./.github/workflows/secret-scan.yml
     with:
@@ -72,7 +72,7 @@ jobs:
       actions: read
 
   develop-dependency-scan:
-    name: Develop - Dependency Scan
+    name: Dependency Scan
     if: github.event_name == 'pull_request' && github.base_ref == 'develop'
     uses: ./.github/workflows/dependency-scan.yml
     with:
@@ -86,7 +86,7 @@ jobs:
       actions: read
 
   develop-iac:
-    name: Develop - IaC Security Scan
+    name: IaC
     if: github.event_name == 'pull_request' && github.base_ref == 'develop'
     uses: ./.github/workflows/iac.yml
     with:
@@ -100,7 +100,7 @@ jobs:
       actions: read
 
   pr-main-build-and-container-scan:
-    name: PR Main - Build and Container Scan
+    name: Build & Container Scan
     if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'develop'
     uses: ./.github/workflows/build-and-container-scan.yml
     with:
@@ -112,7 +112,7 @@ jobs:
       security-events: write
 
   pr-main-dast:
-    name: PR Main - DAST Local
+    name: DAST
     if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'develop'
     needs:
       - pr-main-build-and-container-scan
@@ -120,16 +120,16 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build application image locally
+      - name: Build image
         run: docker build -t bookio-pr-dast:local -f Dockerfile .
 
-      - name: Start application on runner localhost
+      - name: Start container
         run: docker run -d --name bookio-pr-dast -p 3000:3000 bookio-pr-dast:local
 
-      - name: Health check local application
+      - name: Wait for health
         run: |
           for i in {1..30}; do
             if curl -sf http://localhost:3000/health >/dev/null 2>&1; then
@@ -142,10 +142,10 @@ jobs:
           docker logs bookio-pr-dast || true
           exit 1
 
-      - name: Pull ZAP image
+      - name: Pull ZAP
         run: docker pull ghcr.io/zaproxy/zaproxy:stable
 
-      - name: Run OWASP ZAP active scan
+      - name: Run ZAP scan
         shell: bash
         run: |
           mkdir -p zap-output && chmod 777 zap-output
@@ -175,7 +175,7 @@ jobs:
           done
           set -e
 
-      - name: Upload ZAP report
+      - name: Upload results
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -186,12 +186,12 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
-      - name: Cleanup local DAST container
+      - name: Remove container
         if: always()
         run: docker rm -f bookio-pr-dast || true
 
   main-build:
-    name: Main - Build
+    name: Build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/build-and-container-scan.yml
     with:
@@ -203,15 +203,15 @@ jobs:
       security-events: write
 
   main-deploy:
-    name: Main - Deploy
+    name: Deploy
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs:
       - main-build
     uses: ./.github/workflows/dast-and-deploy.yml
     with:
       source_image_ref: ${{ needs.main-build.outputs.image_ref }}
-      target_url: ''
-      run_dast: false
+      target_url: ${{ vars.RENDER_SERVICE_URL }}
+      run_dast: true
     secrets:
       RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
     permissions:
