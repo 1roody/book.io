@@ -1,0 +1,81 @@
+name: DAST
+
+on:
+  workflow_call:
+    inputs:
+      target_url:
+        required: true
+        type: string
+        description: Base URL to scan (e.g. http://localhost:3000 or deployed URL)
+      build_local_image:
+        required: false
+        type: boolean
+        default: false
+        description: If true, build the Dockerfile locally and run a container before scanning
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: Base URL to scan
+        required: true
+        type: string
+
+jobs:
+  dast-owasp-zap:
+    name: OWASP ZAP (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - path: livros
+            name: livros
+          - path: segredo
+            name: segredo
+          - path: "xss?nome=teste"
+            name: xss
+          - path: "sql?q=teste"
+            name: sql
+    env:
+      TARGET_URL: ${{ inputs.target_url }}
+    steps:
+      - name: Checkout
+        if: inputs.build_local_image
+        uses: actions/checkout@v4
+
+      - name: Build local image
+        if: inputs.build_local_image
+        run: docker build -t bookio-dast:local -f Dockerfile .
+
+      - name: Start local container
+        if: inputs.build_local_image
+        run: docker run -d --name bookio-dast-${{ matrix.name }} -p 3000:3000 bookio-dast:local
+
+      - name: Wait for health
+        run: |
+          APP_URL="${TARGET_URL%/}"
+          for i in {1..30}; do
+            if curl -sf "${APP_URL}/health" >/dev/null 2>&1; then
+              echo "Application healthy at ${APP_URL}"
+              exit 0
+            fi
+            echo "Waiting for application... ($i/30)"
+            sleep 10
+          done
+          echo "Application did not become healthy in time"
+          exit 1
+
+      - name: ZAP full scan
+        uses: zaproxy/action-full-scan@v0.12.0
+        with:
+          target: ${{ env.TARGET_URL }}/${{ matrix.path }}
+          allow_issue_writing: false
+          artifact_name: dast-zap-${{ matrix.name }}
+          cmd_options: "-a -I"
+
+      - name: Remove local container
+        if: always() && inputs.build_local_image
+        run: docker rm -f bookio-dast-${{ matrix.name }} || true
