@@ -1,0 +1,33 @@
+name: Feature Push
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+
+jobs:
+  secret-scan:
+    name: Secret Scan
+    uses: ./.github/workflows/_secret-scan.yml
+    with:
+      changed_only: true
+      base_sha: ${{ github.event.before }}
+      head_sha: ${{ github.sha }}
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  dependency-scan:
+    name: Dependency Scan
+    uses: ./.github/workflows/_dependency-scan.yml
+    with:
+      changed_only: true
+      base_sha: ${{ github.event.before }}
+      head_sha: ${{ github.sha }}
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read

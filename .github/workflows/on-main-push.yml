@@ -1,0 +1,53 @@
+name: Main Push
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  stage-1-build:
+    name: Stage 1
+    uses: ./.github/workflows/_build.yml
+    with:
+      push_image: true
+    permissions:
+      contents: read
+      packages: write
+
+  stage-1-container-scan:
+    name: Stage 1
+    needs: stage-1-build
+    uses: ./.github/workflows/_container-scan.yml
+    with:
+      image_ref: ${{ needs.stage-1-build.outputs.image_ref }}
+      registry_login: true
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+  stage-2-deploy:
+    name: Stage 2
+    needs:
+      - stage-1-build
+      - stage-1-container-scan
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      source_image_ref: ${{ needs.stage-1-build.outputs.image_ref }}
+    secrets:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    permissions:
+      contents: read
+      packages: write
+
+  stage-2-dast:
+    name: Stage 2
+    needs: stage-2-deploy
+    uses: ./.github/workflows/_dast.yml
+    with:
+      target_url: ${{ vars.RENDER_SERVICE_URL }}
+      build_local_image: false
+    permissions:
+      contents: read
+      security-events: write
