@@ -11,6 +11,8 @@ on:
       - labeled
       - unlabeled
 
+permissions: {}
+
 jobs:
   build:
     name: Build
@@ -20,7 +22,6 @@ jobs:
       push_image: false
     permissions:
       contents: read
-      packages: write
 
   container-scan:
     name: Container Scan
