@@ -97,6 +97,12 @@ app.get('/sql', (req, res) => {
 });
 
 
+app.get('/redirect', (req, res) => {
+  const url = req.query.url || '/';
+  res.redirect(url);
+});
+
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
