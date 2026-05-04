@@ -1,0 +1,63 @@
+name: Develop PR
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+
+jobs:
+  sast:
+    name: SAST
+    uses: ./.github/workflows/_sast.yml
+    with:
+      changed_only: true
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  secret-scan:
+    name: Secret Scan
+    uses: ./.github/workflows/_secret-scan.yml
+    with:
+      changed_only: false
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  dependency-scan:
+    name: Dependency Scan
+    uses: ./.github/workflows/_dependency-scan.yml
+    with:
+      changed_only: true
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
+
+  iac:
+    name: IaC
+    uses: ./.github/workflows/_iac.yml
+    with:
+      changed_only: true
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: read
+      actions: read
