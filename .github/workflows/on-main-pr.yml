@@ -22,6 +22,7 @@ jobs:
       push_image: false
     permissions:
       contents: read
+      packages: write
 
   container-scan:
     name: Container Scan
