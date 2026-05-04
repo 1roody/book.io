@@ -4,4 +4,4 @@ config/
 test
 .claude
 .env
-#
+.devbox
