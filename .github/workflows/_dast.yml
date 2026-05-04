@@ -41,6 +41,7 @@ jobs:
             name: sql
     env:
       TARGET_URL: ${{ inputs.target_url }}
+      ZAP_REPORT_XML: zap-report-${{ matrix.name }}.xml
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -73,15 +74,21 @@ jobs:
           target: ${{ env.TARGET_URL }}/${{ matrix.path }}
           allow_issue_writing: false
           artifact_name: dast-zap-${{ matrix.name }}
-          cmd_options: "-a -I"
+          cmd_options: "-a -I -x ${{ env.ZAP_REPORT_XML }}"
 
-      - name: Upload DAST results
+      - name: Create sarif file from zaproxy results
         if: always()
-        uses: ./.github/actions/upload-security-results
+        uses: SvanBoxel/zaproxy-to-ghas@main
         with:
-          sarif_path: results_sarif.sarif
+          token: ${{ secrets.GITHUB_TOKEN }}
+          file: /zap/wrk/${{ env.ZAP_REPORT_XML }}
+
+      - name: Upload SARIF file
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
           category: zap-${{ matrix.name }}
-          artifact_name: dast-zap-${{ matrix.name }}-sarif
 
       - name: Remove local container
         if: always() && inputs.build_local_image
