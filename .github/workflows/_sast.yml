@@ -24,79 +24,53 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      pull-requests: read
-      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install Semgrep
-        run: python3 -m pip install --quiet semgrep
-
       - name: Resolve targets
         id: targets
-        shell: bash
-        run: |
-          if [ "${{ inputs.changed_only }}" != "true" ]; then
-            echo "mode=full" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+        uses: ./.github/actions/resolve-changed-targets
+        with:
+          changed_only: ${{ inputs.changed_only }}
+          base_sha: ${{ inputs.base_sha }}
+          head_sha: ${{ inputs.head_sha }}
+          default_target: "."
 
-          if [ -z "${{ inputs.base_sha }}" ] || [ -z "${{ inputs.head_sha }}" ] || [ "${{ inputs.base_sha }}" = "0000000000000000000000000000000000000000" ]; then
-            echo "mode=full" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+      - name: Cache Semgrep
+        if: steps.targets.outputs.mode != 'skip'
+        uses: actions/cache@v4
+        with:
+          path: ~/.semgrep
+          key: semgrep-${{ runner.os }}-${{ hashFiles('**/.semgrepignore', '**/.semgrep.yml') }}
+          restore-keys: |
+            semgrep-${{ runner.os }}-
 
-          mapfile -t changed_files < <(
-            git diff --name-only --diff-filter=ACMR "${{ inputs.base_sha }}" "${{ inputs.head_sha }}" \
-              | while read -r file; do
-                  [ -f "$file" ] && printf '%s\n' "$file"
-                done
-          )
-
-          if [ "${#changed_files[@]}" -eq 0 ]; then
-            echo "mode=skip" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          {
-            echo "mode=changed"
-            echo "targets<<EOF"
-            printf '%s\n' "${changed_files[@]}"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+      - name: Install Semgrep
+        if: steps.targets.outputs.mode != 'skip'
+        run: python3 -m pip install --quiet semgrep
 
       - name: Scan
         if: steps.targets.outputs.mode != 'skip'
         shell: bash
         run: |
           set -euo pipefail
-
           if [ "${{ steps.targets.outputs.mode }}" = "full" ]; then
             semgrep scan --config auto --sarif --output semgrep-results.sarif
             semgrep scan --config auto --json --output semgrep-results.json
           else
-            mapfile -t targets < <(printf '%s\n' "${{ steps.targets.outputs.targets }}")
+            mapfile -t targets <<< "${{ steps.targets.outputs.targets }}"
             semgrep scan --config auto --sarif --output semgrep-results.sarif "${targets[@]}"
             semgrep scan --config auto --json --output semgrep-results.json "${targets[@]}"
           fi
 
-      - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v4
-        if: always() && hashFiles('semgrep-results.sarif') != ''
-        with:
-          sarif_file: semgrep-results.sarif
-          category: semgrep
-
       - name: Upload results
-        uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.targets.outputs.mode != 'skip'
+        uses: ./.github/actions/upload-security-results
         with:
-          name: sast-semgrep
-          path: |
-            semgrep-results.sarif
-            semgrep-results.json
-          retention-days: 30
-          if-no-files-found: ignore
+          sarif_path: semgrep-results.sarif
+          json_path: semgrep-results.json
+          category: semgrep
+          artifact_name: sast-semgrep

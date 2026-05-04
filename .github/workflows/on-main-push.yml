@@ -5,6 +5,8 @@ on:
     branches:
       - main
 
+permissions: {}
+
 jobs:
   stage-1-build:
     name: Stage 1 — Build
@@ -26,7 +28,7 @@ jobs:
       RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
     permissions:
       contents: read
-      packages: write
+      packages: read
 
   stage-2-dast:
     name: Stage 2 — DAST
