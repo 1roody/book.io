@@ -96,6 +96,10 @@ app.get('/sql', (req, res) => {
   });
 });
 
+app.get('/feature', (req, res) => {
+  res.send('new feature');
+});
+
 
 app.get('/redirect', (req, res) => {
   const url = req.query.url || '/';
