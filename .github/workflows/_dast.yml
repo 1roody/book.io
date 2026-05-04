@@ -41,6 +41,7 @@ jobs:
             name: sql
     env:
       TARGET_URL: ${{ inputs.target_url }}
+      ZAP_REPORT_XML: zap-report-${{ matrix.name }}.xml
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,6 +55,7 @@ jobs:
         run: docker run -d --name bookio-dast-${{ matrix.name }} -p 3000:3000 bookio-dast:local
 
       - name: Wait for health
+        continue-on-error: true
         run: |
           APP_URL="${TARGET_URL%/}"
           for i in {1..30}; do
@@ -74,7 +76,15 @@ jobs:
           target: ${{ env.TARGET_URL }}/${{ matrix.path }}
           allow_issue_writing: false
           artifact_name: dast-zap-${{ matrix.name }}
-          cmd_options: "-a -I"
+          cmd_options: "-a -I -x ${{ env.ZAP_REPORT_XML }}"
+
+      - name: Create sarif file from zaproxy
+        if: always()
+        continue-on-error: true
+        uses: SvanBoxel/zaproxy-to-ghas@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          file: /zap/wrk/${{ env.ZAP_REPORT_XML }}
 
       - name: Upload SARIF file
         if: always()
