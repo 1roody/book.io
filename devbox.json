@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
+  "packages": [
+    "nodejs@20.18.1",
+    "trivy@0.69.3",
+    "gitleaks@8.30.0",
+    "semgrep@1.89.0",
+    "gh@2.62.0",
+    "jq@1.7.1"
+  ],
+  "shell": {
+    "init_hook": [
+      "echo \"Devbox shell pronto — versões fixadas para o curso aulas-hc/bookio\""
+    ],
+    "scripts": {
+      "install": "npm ci || npm install",
+      "dev": "node index.js",
+      "test:secrets": "gitleaks dir . --redact --verbose --exit-code 0",
+      "test:sast": "semgrep scan --config auto",
+      "test:deps": "trivy fs --severity CRITICAL,HIGH,MEDIUM .",
+      "test:iac": "trivy config --severity CRITICAL,HIGH ./iac-demo",
+      "build:image": "docker build -t bookio:dev -f Dockerfile ."
+    }
+  }
+}

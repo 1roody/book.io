@@ -1,0 +1,42 @@
+name: Upload Security Results
+description: Uploads SARIF to GitHub code scanning and the raw reports as an artifact.
+
+inputs:
+  sarif_path:
+    description: Path to SARIF file
+    required: true
+  json_path:
+    description: Path to JSON file (optional second artifact)
+    required: false
+    default: ""
+  category:
+    description: SARIF category (e.g. "trivy-fs", "semgrep")
+    required: true
+  artifact_name:
+    description: Name of the uploaded artifact
+    required: true
+  retention_days:
+    description: Days to retain the artifact
+    required: false
+    default: "30"
+
+runs:
+  using: composite
+  steps:
+    - name: Upload SARIF
+      if: always() && hashFiles(inputs.sarif_path) != ''
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ inputs.sarif_path }}
+        category: ${{ inputs.category }}
+
+    - name: Upload artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: |
+          ${{ inputs.sarif_path }}
+          ${{ inputs.json_path }}
+        retention-days: ${{ inputs.retention_days }}
+        if-no-files-found: ignore

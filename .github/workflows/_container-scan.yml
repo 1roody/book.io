@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
+      contents: read
       packages: read
       security-events: write
     steps:
@@ -34,7 +35,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build image
+      - name: Build image (cached)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -43,33 +44,20 @@ jobs:
           load: true
           tags: |
             ${{ inputs.image_ref }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Scan
-        run: |
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "${{ github.workspace }}:/work" \
-            -w /work \
-            aquasec/trivy:0.69.3 \
-            image \
-            --image-src docker \
-            --severity CRITICAL,HIGH,MEDIUM \
-            --format sarif \
-            --output trivy-results.sarif \
-            "${{ inputs.image_ref }}"
-
-      - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v4
-        if: always() && hashFiles('trivy-results.sarif') != ''
+      - name: Trivy image scan
+        uses: ./.github/actions/trivy-scan
         with:
-          sarif_file: trivy-results.sarif
-          category: trivy
+          command: image
+          targets: ${{ inputs.image_ref }}
+          output_prefix: trivy-results
 
       - name: Upload results
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: ./.github/actions/upload-security-results
         with:
-          name: container-scan-trivy
-          path: trivy-results.sarif
-          retention-days: 30
-          if-no-files-found: ignore
+          sarif_path: trivy-results.sarif
+          category: trivy
+          artifact_name: container-scan-trivy
