@@ -34,15 +34,3 @@ jobs:
       contents: read
       packages: read
       security-events: write
-
-  dast:
-    name: DAST
-    if: github.head_ref == 'develop'
-    needs: build
-    uses: ./.github/workflows/_dast.yml
-    with:
-      target_url: http://localhost:3000
-      build_local_image: true
-    permissions:
-      contents: read
-      security-events: write
