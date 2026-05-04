@@ -17,14 +17,12 @@ on:
         default: ''
 
 jobs:
-  dependency_scan:
+  dependency-scan:
     name: Trivy
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write
-      pull-requests: read
-      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,78 +31,27 @@ jobs:
 
       - name: Resolve targets
         id: targets
-        shell: bash
-        run: |
-          if [ "${{ inputs.changed_only }}" != "true" ] || [ "${{ inputs.base_sha }}" = "0000000000000000000000000000000000000000" ]; then
-            echo "mode=full" >> "$GITHUB_OUTPUT"
-            echo "targets=." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          mapfile -t changed_files < <(
-            git diff --name-only --diff-filter=ACMR "${{ inputs.base_sha }}" "${{ inputs.head_sha }}" \
-              | grep -E '(^|/)(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements.*\.txt|poetry\.lock|Pipfile(\.lock)?|pom\.xml|build\.gradle(\.kts)?|go\.(mod|sum)|Cargo\.(toml|lock))$' \
-              || true
-          )
-
-          if [ "${#changed_files[@]}" -eq 0 ]; then
-            echo "mode=skip" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          {
-            echo "mode=changed"
-            echo "targets<<EOF"
-            printf '%s\n' "${changed_files[@]}"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Scan
-        if: steps.targets.outputs.mode != 'skip'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [ "${{ steps.targets.outputs.mode }}" = "full" ]; then
-            mapfile -t targets < <(printf '.\n')
-          else
-            mapfile -t targets < <(printf '%s\n' "${{ steps.targets.outputs.targets }}")
-          fi
-
-          docker run --rm \
-            -v "${{ github.workspace }}:/work" \
-            -w /work \
-            aquasec/trivy:0.69.3 \
-            fs \
-            --severity CRITICAL,HIGH,MEDIUM \
-            --format sarif \
-            --output trivy-fs-results.sarif \
-            "${targets[@]}"
-
-          docker run --rm \
-            -v "${{ github.workspace }}:/work" \
-            -w /work \
-            aquasec/trivy:0.69.3 \
-            fs \
-            --severity CRITICAL,HIGH,MEDIUM \
-            --format json \
-            --output trivy-fs-results.json \
-            "${targets[@]}"
-
-      - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v4
-        if: always() && hashFiles('trivy-fs-results.sarif') != ''
+        uses: ./.github/actions/resolve-changed-targets
         with:
-          sarif_file: trivy-fs-results.sarif
-          category: trivy-fs
+          changed_only: ${{ inputs.changed_only }}
+          base_sha: ${{ inputs.base_sha }}
+          head_sha: ${{ inputs.head_sha }}
+          file_pattern: '(^|/)(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements.*\.txt|poetry\.lock|Pipfile(\.lock)?|pom\.xml|build\.gradle(\.kts)?|go\.(mod|sum)|Cargo\.(toml|lock))$'
+          default_target: "."
+
+      - name: Trivy fs scan
+        if: steps.targets.outputs.mode != 'skip'
+        uses: ./.github/actions/trivy-scan
+        with:
+          command: fs
+          targets: ${{ steps.targets.outputs.mode == 'full' && '.' || steps.targets.outputs.targets }}
+          output_prefix: trivy-fs-results
 
       - name: Upload results
-        uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.targets.outputs.mode != 'skip'
+        uses: ./.github/actions/upload-security-results
         with:
-          name: sca-trivy-fs
-          path: |
-            trivy-fs-results.sarif
-            trivy-fs-results.json
-          retention-days: 30
-          if-no-files-found: ignore
+          sarif_path: trivy-fs-results.sarif
+          json_path: trivy-fs-results.json
+          category: trivy-fs
+          artifact_name: sca-trivy-fs
