@@ -43,7 +43,6 @@ jobs:
       TARGET_URL: ${{ inputs.target_url }}
     steps:
       - name: Checkout
-        if: inputs.build_local_image
         uses: actions/checkout@v4
 
       - name: Build local image
@@ -75,6 +74,14 @@ jobs:
           allow_issue_writing: false
           artifact_name: dast-zap-${{ matrix.name }}
           cmd_options: "-a -I"
+
+      - name: Upload DAST results
+        if: always()
+        uses: ./.github/actions/upload-security-results
+        with:
+          sarif_path: results_sarif.sarif
+          category: zap-${{ matrix.name }}
+          artifact_name: dast-zap-${{ matrix.name }}-sarif
 
       - name: Remove local container
         if: always() && inputs.build_local_image
