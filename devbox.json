@@ -14,7 +14,7 @@
     ],
     "scripts": {
       "install": "npm ci || npm install",
-      "dev": "node index.js",
+      "dev": "node src/index.js",
       "test:secrets": "gitleaks dir . --redact --verbose --exit-code 0",
       "test:sast": "semgrep scan --config auto",
       "test:deps": "trivy fs --severity CRITICAL,HIGH,MEDIUM .",

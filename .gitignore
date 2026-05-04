@@ -3,3 +3,4 @@ config/
 .codex
 test
 .claude
+.env
