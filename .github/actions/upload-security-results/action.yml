@@ -24,7 +24,7 @@ runs:
   using: composite
   steps:
     - name: Upload SARIF
-      if: always() && hashFiles(inputs.sarif_path) != ''
+      if: always()
       uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: ${{ inputs.sarif_path }}
