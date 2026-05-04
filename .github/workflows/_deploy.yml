@@ -16,7 +16,7 @@ env:
 
 jobs:
   deploy-docker:
-    name: Deploy
+    name: Render
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
