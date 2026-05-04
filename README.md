@@ -61,16 +61,16 @@ devbox shell
 Dentro do shell do Devbox:
 
 ```bash
-devbox run install   # npm ci
-devbox run dev       # inicia o servidor na porta 3000
+devbox run install  
+devbox run dev      
 ```
 
 ### Com Node.js diretamente
 
 ```bash
 npm install
-cp .env.example .env   # ajuste as variáveis se necessário
-npm start              # porta 3000
+cp .env.example .env 
+npm start            
 ```
 
 ### Com Docker Compose
@@ -90,11 +90,11 @@ Consulte [docs/how_to_run.md](docs/how_to_run.md) para comandos completos de cad
 Com Devbox, os atalhos abaixo executam os mesmos scanners que rodam no CI:
 
 ```bash
-devbox run test:secrets   # Gitleaks — secret scan no diretório
-devbox run test:sast      # Semgrep — análise estática
-devbox run test:deps      # Trivy FS — dependências
-devbox run test:iac       # Trivy Config — manifests em iac-demo/
-devbox run build:image    # build local da imagem (necessário para container scan)
+devbox run test:secrets 
+devbox run test:sast    
+devbox run test:deps    
+devbox run test:iac     
+devbox run build:image  
 ```
 
 ---
@@ -131,22 +131,22 @@ Todos os resultados de scan são enviados ao **GitHub Code Scanning** como SARIF
 ```
 book.io/
 ├── .github/
-│   ├── workflows/        # 13 workflows (5 orquestradores + 8 reusables)
-│   └── actions/          # 3 composite actions (trivy-scan, upload-results, resolve-targets)
+│   ├── workflows/       ---> 13 workflows (5 orquestradores + 8 reusables)
+│   └── actions/         ---> 3 composite actions (trivy-scan, upload-results, resolve-targets)
 ├── src/
-│   └── index.js          # Servidor Express + endpoints vulneráveis
+│   └── index.js         ---> Servidor Express + endpoints vulneráveis
 ├── iac-demo/
 │   └── k8s/
-│       └── insecure-pod.yaml  # Manifest K8s intencionalmente inseguro (alvo do Trivy Config)
+│       └── insecure-pod.yaml ---> Manifest K8s intencionalmente inseguro (alvo do Trivy Config)
 ├── scripts/
-│   ├── prune-ghcr.sh     # Limpeza de versões antigas no GHCR
-│   └── zap.sh            # Helper para ZAP local
+│   ├── prune-ghcr.sh    ---> Limpeza de versões antigas no GHCR
+│   └── zap.sh           ---> Helper para ZAP local
 ├── docs/
-│   └── how_to_run.md     # Como rodar cada scanner manualmente
-├── Dockerfile            # Imagem node:14 (EOL intencional — gera CVEs para demonstração)
-├── docker-compose.yml    # Stack local
-├── devbox.json           # Ambiente de desenvolvimento com versões fixadas
-└── .env.example          # Variáveis de ambiente de exemplo
+│   └── how_to_run.md    ---> Como rodar cada scanner manualmente
+├── Dockerfile           ---> Imagem node:14 (EOL intencional — gera CVEs para demonstração)
+├── docker-compose.yml   ---> Stack local
+├── devbox.json          ---> Ambiente de desenvolvimento com versões fixadas
+└── .env.example         ---> Variáveis de ambiente de exemplo
 ```
 
 ---
