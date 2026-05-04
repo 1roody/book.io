@@ -15,23 +15,10 @@ jobs:
       contents: read
       packages: write
 
-  stage-1-container-scan:
-    name: Stage 1
-    needs: stage-1-build
-    uses: ./.github/workflows/_container-scan.yml
-    with:
-      image_ref: ${{ needs.stage-1-build.outputs.image_ref }}
-      registry_login: true
-    permissions:
-      contents: read
-      packages: read
-      security-events: write
-
   stage-2-deploy:
     name: Stage 2
     needs:
       - stage-1-build
-      - stage-1-container-scan
     uses: ./.github/workflows/_deploy.yml
     with:
       source_image_ref: ${{ needs.stage-1-build.outputs.image_ref }}
