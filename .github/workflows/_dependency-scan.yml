@@ -1,4 +1,4 @@
-name: IaC Security Scan
+name: Dependency Scan
 
 on:
   workflow_call:
@@ -17,34 +17,33 @@ on:
         default: ''
 
 jobs:
-  iac-trivy-config:
-    name: IaC - Trivy Config Scan
+  dependency_scan:
+    name: Trivy
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     permissions:
       contents: read
       security-events: write
-      actions: read
       pull-requests: read
+      actions: read
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Resolve IaC scan targets
+      - name: Resolve targets
         id: targets
         shell: bash
         run: |
           if [ "${{ inputs.changed_only }}" != "true" ] || [ "${{ inputs.base_sha }}" = "0000000000000000000000000000000000000000" ]; then
             echo "mode=full" >> "$GITHUB_OUTPUT"
-            echo "targets=./iac-demo" >> "$GITHUB_OUTPUT"
+            echo "targets=." >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           mapfile -t changed_files < <(
             git diff --name-only --diff-filter=ACMR "${{ inputs.base_sha }}" "${{ inputs.head_sha }}" \
-              | grep -E '^iac-demo/.*\.(ya?ml|json|tf|tfvars)$' \
+              | grep -E '(^|/)(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements.*\.txt|poetry\.lock|Pipfile(\.lock)?|pom\.xml|build\.gradle(\.kts)?|go\.(mod|sum)|Cargo\.(toml|lock))$' \
               || true
           )
 
@@ -60,14 +59,14 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Run Trivy config scan
+      - name: Scan
         if: steps.targets.outputs.mode != 'skip'
         shell: bash
         run: |
           set -euo pipefail
 
           if [ "${{ steps.targets.outputs.mode }}" = "full" ]; then
-            mapfile -t targets < <(printf './iac-demo\n')
+            mapfile -t targets < <(printf '.\n')
           else
             mapfile -t targets < <(printf '%s\n' "${{ steps.targets.outputs.targets }}")
           fi
@@ -76,36 +75,36 @@ jobs:
             -v "${{ github.workspace }}:/work" \
             -w /work \
             aquasec/trivy:0.69.3 \
-            config \
-            --severity CRITICAL,HIGH \
+            fs \
+            --severity CRITICAL,HIGH,MEDIUM \
             --format sarif \
-            --output trivy-iac-results.sarif \
+            --output trivy-fs-results.sarif \
             "${targets[@]}"
 
           docker run --rm \
             -v "${{ github.workspace }}:/work" \
             -w /work \
             aquasec/trivy:0.69.3 \
-            config \
-            --severity CRITICAL,HIGH \
+            fs \
+            --severity CRITICAL,HIGH,MEDIUM \
             --format json \
-            --output trivy-iac-results.json \
+            --output trivy-fs-results.json \
             "${targets[@]}"
 
-      - name: Upload Trivy IaC SARIF
+      - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v4
-        if: always() && hashFiles('trivy-iac-results.sarif') != ''
+        if: always() && hashFiles('trivy-fs-results.sarif') != ''
         with:
-          sarif_file: trivy-iac-results.sarif
-          category: trivy-iac
+          sarif_file: trivy-fs-results.sarif
+          category: trivy-fs
 
-      - name: Upload Trivy IaC reports
+      - name: Upload results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: iac-trivy-config
+          name: sca-trivy-fs
           path: |
-            trivy-iac-results.sarif
-            trivy-iac-results.json
+            trivy-fs-results.sarif
+            trivy-fs-results.json
           retention-days: 30
           if-no-files-found: ignore

@@ -1,0 +1,48 @@
+name: Main PR
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+
+jobs:
+  build:
+    name: Build
+    if: github.head_ref == 'develop'
+    uses: ./.github/workflows/_build.yml
+    with:
+      push_image: false
+    permissions:
+      contents: read
+      packages: write
+
+  container-scan:
+    name: Container Scan
+    if: github.head_ref == 'develop'
+    needs: build
+    uses: ./.github/workflows/_container-scan.yml
+    with:
+      image_ref: ${{ needs.build.outputs.image_ref }}
+      registry_login: false
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+  dast:
+    name: DAST
+    if: github.head_ref == 'develop'
+    needs: build
+    uses: ./.github/workflows/_dast.yml
+    with:
+      target_url: http://localhost:3000
+      build_local_image: true
+    permissions:
+      contents: read
+      security-events: write
