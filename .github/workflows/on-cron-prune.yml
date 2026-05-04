@@ -1,0 +1,33 @@
+name: Cron — Prune GHCR
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'   # Domingo, 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Apenas listar o que seria removido (não deleta)
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  prune:
+    name: Prune
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_OWNER: ${{ github.repository_owner }}
+      GH_PACKAGE: ${{ github.event.repository.name }}
+      KEEP_COUNT: "3"
+      DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run prune script
+        run: ./scripts/prune-ghcr.sh

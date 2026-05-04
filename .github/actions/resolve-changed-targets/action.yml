@@ -1,0 +1,82 @@
+name: Resolve Changed Targets
+description: |
+  Determines which files/paths a security scan should target based on
+  changed_only flag and base/head SHAs. Optionally filters by regex.
+
+inputs:
+  changed_only:
+    description: If "true", scope to changed files between base_sha and head_sha
+    required: false
+    default: "false"
+  base_sha:
+    description: Base SHA for diff
+    required: false
+    default: ""
+  head_sha:
+    description: Head SHA for diff
+    required: false
+    default: ""
+  file_pattern:
+    description: Optional ERE regex to filter changed files (e.g. manifest files)
+    required: false
+    default: ""
+  default_target:
+    description: Path used when mode resolves to "full" (e.g. "." or "./iac-demo")
+    required: false
+    default: "."
+
+outputs:
+  mode:
+    description: "full | changed | skip"
+    value: ${{ steps.resolve.outputs.mode }}
+  targets:
+    description: Newline-separated list of target paths
+    value: ${{ steps.resolve.outputs.targets }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [ "${{ inputs.changed_only }}" != "true" ] || \
+           [ -z "${{ inputs.base_sha }}" ] || \
+           [ -z "${{ inputs.head_sha }}" ] || \
+           [ "${{ inputs.base_sha }}" = "0000000000000000000000000000000000000000" ]; then
+          {
+            echo "mode=full"
+            echo "targets<<EOF"
+            printf '%s\n' "${{ inputs.default_target }}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [ -n "${{ inputs.file_pattern }}" ]; then
+          mapfile -t changed_files < <(
+            git diff --name-only --diff-filter=ACMR "${{ inputs.base_sha }}" "${{ inputs.head_sha }}" \
+              | grep -E "${{ inputs.file_pattern }}" \
+              || true
+          )
+        else
+          mapfile -t changed_files < <(
+            git diff --name-only --diff-filter=ACMR "${{ inputs.base_sha }}" "${{ inputs.head_sha }}" \
+              | while read -r file; do
+                  [ -f "$file" ] && printf '%s\n' "$file"
+                done
+          )
+        fi
+
+        if [ "${#changed_files[@]}" -eq 0 ]; then
+          echo "mode=skip" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        {
+          echo "mode=changed"
+          echo "targets<<EOF"
+          printf '%s\n' "${changed_files[@]}"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"

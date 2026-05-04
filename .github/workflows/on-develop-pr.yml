@@ -11,6 +11,8 @@ on:
       - labeled
       - unlabeled
 
+permissions: {}
+
 jobs:
   sast:
     name: SAST
@@ -22,8 +24,6 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      pull-requests: read
-      actions: read
 
   secret-scan:
     name: Secret Scan
@@ -33,8 +33,6 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      pull-requests: read
-      actions: read
 
   dependency-scan:
     name: Dependency Scan
@@ -46,8 +44,6 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      pull-requests: read
-      actions: read
 
   iac:
     name: IaC
@@ -59,5 +55,3 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      pull-requests: read
-      actions: read

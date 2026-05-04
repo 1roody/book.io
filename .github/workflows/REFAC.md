@@ -55,7 +55,6 @@ Antes da refatoração existiam 7 arquivos com problemas de coesão:
 | Job `develop-dependency-scan` | `on-develop-pr.yml` → job `dependency-scan` |
 | Job `develop-iac` | `on-develop-pr.yml` → job `iac` |
 | Job `pr-main-build-and-container-scan` | `on-main-pr.yml` → jobs `build` + `container-scan` |
-| Job `pr-main-dast` (DAST inline, ~70 linhas) | `on-main-pr.yml` → job `dast` (chama `_dast.yml`) |
 | Job `main-build` | `on-main-push.yml` → jobs `stage-1-build` + `stage-1-container-scan` |
 | Job `main-deploy` | `on-main-push.yml` → jobs `stage-2-deploy` + `stage-2-dast` |
 
@@ -140,3 +139,99 @@ A decisão de "rodar ou não" agora é simplesmente "incluir o job no orquestrad
 | Implementações de DAST | 2 | 1 |
 | Reusables single-purpose | 4 | 8 |
 | `if`s condicionais por cenário em orquestrador | ~10 | 0 (cada cenário tem seu arquivo) |
+
+---
+
+# Rodada 2 — Padrões DevOps Directive (modularidade, cache, segurança)
+
+Esta segunda rodada aplica práticas alinhadas ao curso DevOps Directive, mantendo o mesmo plano de execução.
+
+## 8. Devbox para padronização de ambiente local
+
+Adicionado [`devbox.json`](../../devbox.json) na raiz do projeto fixando versões de:
+- `nodejs@20.18.1`
+- `trivy@0.69.3` (mesma versão usada nos workflows)
+- `gitleaks@8.30.0` (idem)
+- `semgrep@1.89.0`
+- `gh@2.62.0`, `jq@1.7.1`
+
+**Como usar (alunos):**
+```bash
+curl -fsSL https://get.jetify.com/devbox | bash   # instala devbox
+devbox install                                     # gera devbox.lock
+devbox shell                                       # entra no ambiente isolado
+```
+
+**Scripts disponíveis dentro do shell:**
+- `devbox run install` → `npm ci`
+- `devbox run dev`     → `node index.js`
+- `devbox run test:secrets|test:sast|test:deps|test:iac` → mesmas ferramentas que rodam no CI
+- `devbox run build:image` → build local da imagem
+
+**Importante**: o `devbox.lock` é gerado por `devbox install` e deve ser commitado no repo (faz o papel de lockfile, fixando hashes Nix). Cada aluno deve gerar localmente na primeira vez.
+
+## 9. Composite Actions para abstração
+
+Lógica duplicada extraída para reutilização em [`.github/actions/`](../actions/):
+
+| Composite | Substitui | Usado em |
+|---|---|---|
+| `resolve-changed-targets` | Bloco de ~25 linhas de bash que aparecia em 3 reusables | `_sast.yml`, `_dependency-scan.yml`, `_iac.yml` |
+| `trivy-scan` | Comandos `docker run aquasec/trivy` repetidos | `_dependency-scan.yml`, `_iac.yml`, `_container-scan.yml` |
+| `upload-security-results` | Bloco SARIF + artifact upload duplicado em todos | Todos os reusables de scan |
+
+**Ganho**: o reusable `_iac.yml` saiu de 111 → ~50 linhas. Mudanças em "como subimos SARIF" passam a ser feitas em **um lugar**.
+
+## 10. Caching inteligente
+
+Adicionado em vários níveis:
+
+| Cache | Local | Hit típico |
+|---|---|---|
+| Trivy DB de vulnerabilidades | `~/.cache/trivy` (composite `trivy-scan`) | Reduz download de ~50MB por job |
+| Buildx layers (GHA backend) | `cache-from: type=gha` em `_build.yml` e `_container-scan.yml` | Skip de camadas Docker inalteradas |
+| Semgrep rules | `~/.semgrep` em `_sast.yml` | Evita re-download de regras `auto` |
+| Binário do Gitleaks | `/usr/local/bin/gitleaks` em `_secret-scan.yml` | Pula `curl + tar` se já cacheado |
+
+A chave do cache do Trivy DB usa `${{ github.run_id }}` para forçar update por execução, com `restore-keys` para fallback — padrão recomendado pela própria docs do Trivy.
+
+## 11. Least-privilege nas permissions
+
+Aplicado o padrão **"deny-by-default + grant-per-job"**:
+
+- Todos os orquestradores (`on-*.yml`) declaram `permissions: {}` no nível do workflow → **revoga** o token padrão.
+- Cada job declara só as permissions de que precisa.
+- **Removidas** permissões desnecessárias dos triggers de push (não há contexto de PR):
+  - `pull-requests: read` ❌ (irrelevante em push)
+  - `actions: read` ❌ (não usamos a API de actions)
+- **Downgrade** em `_deploy.yml` na orquestração: `packages: write` → `packages: read` (deploy só lê o registry, não publica).
+
+## 12. Limpeza automática de imagens GHCR
+
+[`scripts/prune-ghcr.sh`](../../scripts/prune-ghcr.sh) remove versões antigas mantendo:
+- Sempre a tag `latest`.
+- As 3 versões mais recentes (configurável via `KEEP_COUNT`).
+
+[`on-cron-prune.yml`](on-cron-prune.yml) executa o script semanalmente (domingo, 04:00 UTC) e oferece `workflow_dispatch` com flag `dry_run` para auditar sem deletar.
+
+**Teste manual:**
+```bash
+GH_OWNER=1roody GH_PACKAGE=bookio DRY_RUN=true ./scripts/prune-ghcr.sh
+```
+
+## 13. O que **não** foi aplicado e por quê
+
+| Diretriz | Status | Motivo |
+|---|---|---|
+| Taskfile (`go-task`) | ❌ pulado | Redundante com `npm scripts` num projeto Node puro. Reavaliar quando entrar IaC/multi-linguagem. |
+| `act` para validação local | ❌ pulado | Suporte limitado a `workflow_call` cross-file, matrices e GHCR login. Devbox cobre o uso real (rodar as mesmas ferramentas localmente). |
+| GitOps (ArgoCD/Flux) | ❌ pulado | Deploy é em Render via webhook — não há cluster K8s nem agente reconciliador. Aplicar GitOps aqui seria cargo cult. Caberia em projeto separado com Kind + ArgoCD. |
+
+## 14. Resumo da rodada 2
+
+- **3 composite actions** novas em `.github/actions/`
+- **6 caches** adicionados (Trivy DB, Buildx, Semgrep, Gitleaks)
+- **`permissions: {}`** em todos os 5 orquestradores (deny-by-default)
+- **1 script** de manutenção + **1 workflow agendado** para limpeza GHCR
+- **Devbox** para paridade ambiente local ↔ CI
+

@@ -1,0 +1,100 @@
+name: Trivy Scan
+description: |
+  Runs Trivy (fs | config | image) with caching of the vulnerability DB.
+  Generates SARIF and JSON reports.
+
+inputs:
+  command:
+    description: "Trivy subcommand: fs | config | image"
+    required: true
+  targets:
+    description: Newline-separated list of paths (for fs/config) OR a single image ref (for image)
+    required: true
+  severity:
+    description: Comma-separated severities
+    required: false
+    default: "CRITICAL,HIGH,MEDIUM"
+  trivy_version:
+    description: Aquasec Trivy image tag
+    required: false
+    default: "0.69.3"
+  output_prefix:
+    description: Filename prefix for reports (e.g. "trivy-fs-results")
+    required: true
+
+outputs:
+  sarif_path:
+    description: Path to the SARIF report
+    value: ${{ inputs.output_prefix }}.sarif
+  json_path:
+    description: Path to the JSON report
+    value: ${{ inputs.output_prefix }}.json
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Trivy DB
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.cache/trivy
+        key: trivy-db-${{ inputs.trivy_version }}-${{ github.run_id }}
+        restore-keys: |
+          trivy-db-${{ inputs.trivy_version }}-
+
+    - name: Scan
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "${{ github.workspace }}/.cache/trivy"
+
+        cmd="${{ inputs.command }}"
+        prefix="${{ inputs.output_prefix }}"
+        severity="${{ inputs.severity }}"
+
+        if [ "$cmd" = "image" ]; then
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}/.cache/trivy:/root/.cache/trivy" \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            aquasec/trivy:${{ inputs.trivy_version }} \
+            image \
+            --image-src docker \
+            --severity "$severity" \
+            --format sarif --output "${prefix}.sarif" \
+            "${{ inputs.targets }}"
+
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}/.cache/trivy:/root/.cache/trivy" \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            aquasec/trivy:${{ inputs.trivy_version }} \
+            image \
+            --image-src docker \
+            --severity "$severity" \
+            --format json --output "${prefix}.json" \
+            "${{ inputs.targets }}"
+        else
+          mapfile -t target_list <<< "${{ inputs.targets }}"
+
+          docker run --rm \
+            -v "${{ github.workspace }}/.cache/trivy:/root/.cache/trivy" \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            aquasec/trivy:${{ inputs.trivy_version }} \
+            "$cmd" \
+            --severity "$severity" \
+            --format sarif --output "${prefix}.sarif" \
+            "${target_list[@]}"
+
+          docker run --rm \
+            -v "${{ github.workspace }}/.cache/trivy:/root/.cache/trivy" \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            aquasec/trivy:${{ inputs.trivy_version }} \
+            "$cmd" \
+            --severity "$severity" \
+            --format json --output "${prefix}.json" \
+            "${target_list[@]}"
+        fi

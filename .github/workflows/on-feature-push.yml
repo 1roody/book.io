@@ -5,6 +5,8 @@ on:
     branches:
       - 'feature/**'
 
+permissions: {}
+
 jobs:
   secret-scan:
     name: Secret Scan
@@ -16,8 +18,6 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      pull-requests: read
-      actions: read
 
   dependency-scan:
     name: Dependency Scan
@@ -29,5 +29,3 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      pull-requests: read
-      actions: read
