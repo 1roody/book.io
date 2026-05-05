@@ -100,6 +100,10 @@ app.get('/feature', (req, res) => {
   res.send('new feature');
 });
 
+app.get('/feature2', (req, res) => {
+  res.send('new feature2');
+});
+
 
 app.get('/redirect', (req, res) => {
   const url = req.query.url || '/';
