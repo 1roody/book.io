@@ -128,6 +128,8 @@ Todos os resultados de scan são enviados ao **GitHub Code Scanning** como SARIF
 
 ## Estrutura do projeto
 
+<img width="4799" height="7726" alt="CICD Pipeline for Docker-2026-09-23-000554" src="https://github.com/user-attachments/assets/d2c65d86-8d45-409a-9edb-69962ce54605" />
+
 ```
 book.io/
 ├── .github/
